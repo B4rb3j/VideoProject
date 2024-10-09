@@ -37,20 +37,25 @@ class UserSerializer(serializers.ModelSerializer):
 class VideoSerializer(serializers.ModelSerializer):
     average_rating = serializers.DecimalField(max_digits=5, decimal_places=2, required=False)
     watch_history = serializers.SerializerMethodField()
+    comments = serializers.SerializerMethodField()
 
     class Meta:
         model = Video
-        fields = ['id', 'title', 'description', 'upload_date', 'url', 'view_count', 'average_rating', 'is_premium', 'watch_history']
+        fields = ['id', 'title', 'description', 'upload_date', 'url', 'view_count', 'average_rating', 'is_premium', 'watch_history', 'comments']
 
     def get_watch_history(self, obj):
         watch_history = WatchHistory.objects.filter(video=obj)
         return WatchHistorySerializer(watch_history, many=True).data
 
+    def get_comments(self, obj):
+        comments = Comment.objects.filter(video=obj)
+        return CommentSerializer(comments, many=True).data
+
 
 class SubscriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Subscription
-        fields = ['subscription_type', 'is_active', 'start_date', 'end_date']
+        fields = ['user', 'subscription_type', 'is_active', 'start_date', 'end_date']
 
 
 class WatchHistorySerializer(serializers.ModelSerializer):
@@ -62,7 +67,7 @@ class WatchHistorySerializer(serializers.ModelSerializer):
 class PaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
-        fields = ['id', 'user', 'amount', 'transaction_id', 'status', 'created_at']
+        fields = ['amount', 'transaction_id', 'status', 'created_at']
 
 
 class CommentSerializer(serializers.ModelSerializer):
@@ -74,4 +79,4 @@ class CommentSerializer(serializers.ModelSerializer):
 class RatingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Rating
-        fields = ['id', 'user', 'video', 'score', 'created_at']
+        fields = ['user', 'video', 'score', 'created_at']

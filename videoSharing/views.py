@@ -76,6 +76,14 @@ class RenewSubscriptionView(APIView):
         payment_successful = payment_processor.create_payment(request.user, amount)
 
         if payment_successful:
+            payment = Payment.objects.create(
+                user=request.user,
+                amount=amount,
+                transaction_id='some_unique_id',
+                status='successful',
+                created_at=timezone.now()
+            )
+
             subscription.renew_subscription()
             return Response({"detail": "Subscription renewed successfully."}, status=status.HTTP_200_OK)
 
@@ -117,6 +125,14 @@ class PaymentView(APIView):
 
         if payment_successful:
             try:
+                payment = Payment.objects.create(
+                    user=request.user,
+                    amount=amount,
+                    transaction_id='some_unique_id',
+                    status='successful',
+                    created_at=timezone.now()
+                )
+
                 subscription = Subscription.objects.get(user=request.user)
 
                 if subscription.subscription_type == 'free':
@@ -140,6 +156,7 @@ class PaymentView(APIView):
 class PaymentHistoryView(APIView):
     def get(self, request):
         payments = Payment.objects.filter(user=request.user)
+
         serializer = PaymentSerializer(payments, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 

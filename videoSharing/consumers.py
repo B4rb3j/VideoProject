@@ -6,7 +6,7 @@ from django.db.models import Avg
 from django.db import models
 from django.utils import timezone
 
-from .models import Video, User, Rating, Subscription, WatchHistory
+from .models import Video, User, Rating, Subscription, WatchHistory, Comment
 
 
 class VideoViewConsumer(AsyncWebsocketConsumer):
@@ -38,7 +38,9 @@ class VideoViewConsumer(AsyncWebsocketConsumer):
         user_id = int(user_id)
         check_allowance = await self.check_allowance(self.video_id, user_id)
         if action == 'view':
-            if check_allowance:
+            if not check_allowance:
+                await self.send(text_data=json.dumps({'error': 'You must have a premium subscription to watch this video.'}))
+            else:
                 video = await self.increment_view_count(self.video_id)
                 await self.record_watch_history(video.id, user_id)
                 await self.channel_layer.group_send(
@@ -85,8 +87,8 @@ class VideoViewConsumer(AsyncWebsocketConsumer):
 
 class CommentConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        self.room_name = "comments"
-        self.room_group_name = f'comments_{self.room_name}'
+        self.video_id = self.scope['url_route']['kwargs']['video_id']
+        self.room_group_name = f'comments_{self.video_id}'
 
         await self.channel_layer.group_add(
             self.room_group_name,
@@ -101,23 +103,47 @@ class CommentConsumer(AsyncWebsocketConsumer):
         )
 
     async def receive(self, text_data):
-        text_data_json = json.loads(text_data)
-        message = text_data_json['message']
+        data = json.loads(text_data)
+        user_id = data.get('user_id')
+        content = data.get('content')
+
+        if not user_id or not str(user_id).isdigit():
+            await self.send(text_data=json.dumps({"error": "Invalid user_id"}))
+            return
+
+        user_id = int(user_id)
+
+        if not content or len(content.strip()) == 0:
+            await self.send(text_data=json.dumps({"error": "Comment cannot be empty"}))
+            return
+
+        comment = await self.save_comment(user_id, self.video_id, content)
 
         await self.channel_layer.group_send(
             self.room_group_name,
             {
                 'type': 'comment_message',
-                'message': message
+                'comment': {
+                    'user': comment.user.username,
+                    'video': comment.video.id,
+                    'content': comment.content,
+                    'created_at': comment.created_at.isoformat()
+                }
             }
         )
 
     async def comment_message(self, event):
-        message = event['message']
-
+        comment = event['comment']
         await self.send(text_data=json.dumps({
-            'message': message
+            'comment': comment
         }))
+
+    @database_sync_to_async
+    def save_comment(self, user_id, video_id, content):
+        user = User.objects.get(pk=user_id)
+        video = Video.objects.get(pk=video_id)
+        comment = Comment.objects.create(user=user, video=video, content=content)
+        return comment
 
 
 class RatingConsumer(AsyncWebsocketConsumer):
